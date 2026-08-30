@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Student dashboard</div>
+        <h1 id="welcome" style="font-size:1.6rem;"></h1>
+      </div>
+      <div class="flex gap-10">
+        <a href="jobs.html" class="btn btn-primary">Find Jobs</a>
+        <a href="profile.html" class="btn btn-outline">Complete Profile</a>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="stats"></div>
+
+    <div id="profile-nudge"></div>
+
+    <div class="card card-pad" style="margin-bottom:24px;">
+      <div class="flex-between" style="margin-bottom:10px;">
+        <h3 style="margin:0;">Recommended for you</h3>
+        <a href="jobs.html" class="btn btn-ghost btn-sm">See all</a>
+      </div>
+      <div id="recommended"></div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="flex-between" style="margin-bottom:10px;">
+        <h3 style="margin:0;">Latest jobs</h3>
+        <a href="jobs.html" class="btn btn-ghost btn-sm">See all</a>
+      </div>
+      <div id="latest"></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['student']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('student', 'dashboard');
+
+    document.getElementById('welcome').textContent = 'Welcome back, ' + user.full_name.split(' ')[0];
+
+    const profile = await GZ.db.students.byUser(user.id) || {};
+    const apps = await GZ.db.applications.byStudent(user.id);
+    const jobs = (await GZ.db.jobs.all()).filter(j=>j.status==='active');
+    const bizMap = Object.fromEntries((await GZ.db.businesses.all()).map(b=>[b.id,b]));
+
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-tile"><div class="stat-num">${apps.length}</div><div class="stat-label">Applications</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.filter(a=>a.status==='shortlisted'||a.status==='interview').length}</div><div class="stat-label">Shortlisted</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.filter(a=>a.status==='hired').length}</div><div class="stat-label">Hired</div></div>
+      <div class="stat-tile"><div class="stat-num">${jobs.length}</div><div class="stat-label">Open jobs nearby</div></div>
+    `;
+
+    if(!profile.profile_completed){
+      document.getElementById('profile-nudge').innerHTML = `
+        <div class="card card-pad" style="margin-bottom:24px;border-color:var(--amber);background:#fffaf0;">
+          <div class="flex-between" style="flex-wrap:wrap;gap:10px;">
+            <div><b>Your profile is incomplete.</b><p style="margin:4px 0 0;">Employers see completed profiles first. Add your college, skills and resume.</p></div>
+            <a class="btn btn-amber btn-sm" href="profile.html">Complete profile</a>
+          </div>
+        </div>`;
+    }
+
+    function ticketCard(job){
+      const biz = bizMap[job.business_id] || {};
+      return `<div class="ticket">
+        <div class="ticket-body">
+          <div class="ticket-top">
+            <div>
+              <h3 class="ticket-title"><a href="job-details.html?id=${job.id}">${GZ.escapeHtml(job.title)}</a></h3>
+              <div class="ticket-biz">${GZ.escapeHtml(biz.business_name||'')} · ${GZ.escapeHtml(job.city)}</div>
+            </div>
+          </div>
+          <div class="ticket-meta">
+            <span>${job.hours_per_day} hrs/day · ${job.days_per_week} days/wk</span>
+            <span>Posted ${GZ.timeAgo(job.created_at)}</span>
+          </div>
+          <div class="ticket-tags">
+            <span class="tag">${GZ.escapeHtml(job.job_type)}</span>
+            ${(job.required_skills||[]).slice(0,3).map(s=>`<span class="tag">${GZ.escapeHtml(s)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="ticket-stub">
+          <div><div class="stub-amt">${GZ.formatSalary(job)}</div><div class="stub-sub">${GZ.escapeHtml(job.job_type)}</div></div>
+          <a class="btn btn-amber btn-sm" href="job-details.html?id=${job.id}">View</a>
+        </div>
+      </div>`;
+    }
+
+    const mySkills = (profile.skills||[]).map(s=>s.toLowerCase());
+    const recommended = jobs.filter(j=> (j.required_skills||[]).some(s=> mySkills.includes(s.toLowerCase())) || j.city===user.location)
+      .slice(0,3);
+    const recFallback = recommended.length ? recommended : jobs.slice(0,3);
+    document.getElementById('recommended').innerHTML = recFallback.length ? recFallback.map(ticketCard).join('') : GZ.emptyState('No recommendations yet','Complete your profile to get better matches.');
+
+    const latest = [...jobs].sort((a,b)=> new Date(b.created_at)-new Date(a.created_at)).slice(0,3);
+    document.getElementById('latest').innerHTML = latest.length ? latest.map(ticketCard).join('') : GZ.emptyState('No jobs yet','Check back soon.');
+  });
+</script>
+</body>
+</html>

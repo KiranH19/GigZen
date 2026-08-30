@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Users — GigZen Admin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div><div class="eyebrow">Admin</div><h1 style="font-size:1.6rem;">Students & employers</h1></div>
+    </div>
+
+    <div class="pill-filter" id="role-filter" style="margin-bottom:18px;"></div>
+
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Location</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="users-body"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const admin = await GZ.requireRole(['admin']);
+  if(!admin) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('admin', 'users');
+
+    let active = 'all';
+    const roles = ['all','student','employer'];
+    document.getElementById('role-filter').innerHTML = roles.map(r=>`<button data-r="${r}" class="${r==='all'?'on':''}">${r==='all'?'All':r[0].toUpperCase()+r.slice(1)+'s'}</button>`).join('');
+
+    async function render(){
+      const list = (await GZ.db.users.all()).filter(u=> u.role!=='admin' && (active==='all' || u.role===active));
+      document.getElementById('users-body').innerHTML = list.length ? list.map(u=>`
+        <tr>
+          <td><div class="flex gap-10" style="align-items:center;"><span class="avatar-dot">${GZ.initials(u.full_name)}</span>${GZ.escapeHtml(u.full_name)}</div></td>
+          <td style="text-transform:capitalize;">${u.role}</td>
+          <td class="muted">${GZ.escapeHtml(u.email)}</td>
+          <td class="muted">${GZ.escapeHtml(u.location||'\u2014')}</td>
+          <td><span class="badge ${u.suspended ? 'badge-rejected' : 'badge-active'}">${u.suspended ? 'Suspended' : 'Active'}</span></td>
+          <td>
+            ${u.suspended
+              ? `<button class="btn btn-outline btn-sm" data-id="${u.id}" data-act="restore">Restore</button>`
+              : `<button class="btn btn-danger btn-sm" data-id="${u.id}" data-act="suspend">Suspend</button>`}
+          </td>
+        </tr>`).join('') : `<tr><td colspan="6">${GZ.emptyState('No users found','','people')}</td></tr>`;
+    }
+
+    document.getElementById('role-filter').addEventListener('click', e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      active = btn.dataset.r;
+      [...document.getElementById('role-filter').children].forEach(b=> b.classList.toggle('on', b===btn));
+      render();
+    });
+
+    document.getElementById('users-body').addEventListener('click', async e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      const suspended = btn.dataset.act === 'suspend';
+      try{
+        await GZ.db.users.update(btn.dataset.id, { suspended });
+        GZ.toast(suspended ? 'User suspended.' : 'User restored.', suspended ? 'error' : 'success');
+        await render();
+      }catch(err){ GZ.toast(err.message||'Could not update user.','error'); }
+    });
+
+    await render();
+  });
+</script>
+</body>
+</html>

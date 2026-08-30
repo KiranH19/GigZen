@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports — GigZen Admin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div><div class="eyebrow">Admin</div><h1 style="font-size:1.6rem;">Reports</h1></div>
+    </div>
+    <div id="reports-list"></div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const admin = await GZ.requireRole(['admin']);
+  if(!admin) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('admin', 'reports');
+
+    async function render(){
+      const reports = [...await GZ.db.reports.all()].sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+      const list = document.getElementById('reports-list');
+      if(!reports.length){
+        list.innerHTML = GZ.emptyState('No reports yet', 'When students flag inappropriate jobs, they will show up here.', 'flag');
+        return;
+      }
+      list.innerHTML = (await Promise.all(reports.map(async r=>{
+        const job = await GZ.db.jobs.find(r.job_id);
+        return `<div class="card card-pad" style="margin-bottom:14px;">
+          <div class="flex-between" style="flex-wrap:wrap;gap:10px;">
+            <div>
+              <b>${job ? GZ.escapeHtml(job.title) : 'Job removed'}</b>
+              <div class="hint">Reason: ${GZ.escapeHtml(r.reason)} · ${GZ.timeAgo(r.created_at)}</div>
+              <p style="margin-top:8px;">${GZ.escapeHtml(r.description||'')}</p>
+            </div>
+            <div>${r.status==='resolved' ? '<span class="badge badge-hired">Resolved</span>' : '<span class="badge badge-applied">Open</span>'}</div>
+          </div>
+          <div class="flex gap-8" style="margin-top:10px;flex-wrap:wrap;">
+            ${job ? `<button class="btn btn-danger btn-sm" data-act="remove-job" data-job="${job.id}" data-id="${r.id}">Remove job</button>` : ''}
+            ${r.status!=='resolved' ? `<button class="btn btn-outline btn-sm" data-act="resolve" data-id="${r.id}">Mark resolved</button>` : ''}
+          </div>
+        </div>`;
+      }))).join('');
+    }
+
+    document.getElementById('reports-list').addEventListener('click', async e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      try{
+        if(btn.dataset.act==='resolve') await GZ.db.reports.update(btn.dataset.id, {status:'resolved'});
+        if(btn.dataset.act==='remove-job'){ await GZ.db.jobs.remove(btn.dataset.job); await GZ.db.reports.update(btn.dataset.id, {status:'resolved'}); }
+        GZ.toast('Report updated.', 'success');
+        await render();
+      }catch(err){ GZ.toast(err.message||'Could not update report.','error'); }
+    });
+
+    await render();
+  });
+</script>
+</body>
+</html>

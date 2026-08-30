@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Post a Job — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Employer</div>
+        <h1 id="heading" style="font-size:1.6rem;">Post a job</h1>
+      </div>
+    </div>
+
+    <div id="no-biz"></div>
+
+    <div class="card card-pad" style="max-width:680px;" id="form-card">
+      <form id="job-form">
+        <div class="field"><label for="title">Job title</label><input type="text" id="title" required></div>
+        <div class="field-row">
+          <div class="field"><label for="category">Category</label>
+            <select id="category">
+              <option>Retail & Sales</option><option>Cafe & Restaurant</option><option>Education</option>
+              <option>IT & Web Services</option><option>Marketing</option><option>Admin & Data</option>
+              <option>Logistics</option><option>Events</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label for="job_type">Job type</label>
+            <select id="job_type"><option>Part Time</option><option>Weekend</option><option>Evening</option><option>Temporary</option><option>Freelance</option></select>
+          </div>
+        </div>
+        <div class="field"><label for="description">Description</label><textarea id="description" required></textarea></div>
+        <div class="field-row">
+          <div class="field"><label for="location">Location / area</label><input type="text" id="location" required></div>
+          <div class="field"><label for="city">City</label><input type="text" id="city" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="salary">Salary (₹)</label><input type="number" id="salary" min="0" required></div>
+          <div class="field"><label for="salary_type">Salary type</label>
+            <select id="salary_type"><option value="month">Per month</option><option value="day">Per day</option><option value="hour">Per hour</option></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="hours_per_day">Hours per day</label><input type="number" id="hours_per_day" min="1" max="12" required></div>
+          <div class="field"><label for="days_per_week">Days per week</label><input type="number" id="days_per_week" min="1" max="7" required></div>
+        </div>
+        <div class="field"><label for="required_skills">Required skills</label><input type="text" id="required_skills" placeholder="Comma-separated, e.g. Billing, Communication"></div>
+        <div class="field"><label for="requirements">Other requirements</label><textarea id="requirements" placeholder="Anything else applicants should know"></textarea></div>
+        <div class="field"><label for="application_deadline">Application deadline</label><input type="date" id="application_deadline" required></div>
+        <button class="btn btn-primary" type="submit" id="submit-btn">Post job</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['employer']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('employer', 'post');
+
+    const biz = await GZ.db.businesses.byOwner(user.id);
+    const editId = new URLSearchParams(location.search).get('edit');
+    const editingJob = editId ? await GZ.db.jobs.find(editId) : null;
+
+    if(!biz){
+      document.getElementById('form-card').style.display='none';
+      document.getElementById('no-biz').innerHTML = `<div class="card card-pad" style="border-color:var(--amber);background:#fffaf0;">
+        <b>Set up your business profile first</b><p style="margin:4px 0 0;">We need your business details before you can post a job.</p>
+        <a class="btn btn-amber btn-sm" href="employer-profile.html">Set up business profile</a></div>`;
+    }
+
+    if(editingJob){
+      document.getElementById('heading').textContent = 'Edit job';
+      document.getElementById('submit-btn').textContent = 'Save changes';
+      ['title','category','job_type','description','location','city','salary','salary_type','hours_per_day','days_per_week','requirements','application_deadline'].forEach(k=>{
+        const el = document.getElementById(k); if(el && editingJob[k]!==undefined) el.value = editingJob[k];
+      });
+      document.getElementById('required_skills').value = (editingJob.required_skills||[]).join(', ');
+    }
+
+    document.getElementById('job-form').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const form = e.target;
+      if(!form.reportValidity()) return;
+
+      const payload = {
+        title: document.getElementById('title').value.trim(),
+        category: document.getElementById('category').value,
+        job_type: document.getElementById('job_type').value,
+        description: document.getElementById('description').value.trim(),
+        location: document.getElementById('location').value.trim(),
+        city: document.getElementById('city').value.trim(),
+        salary: Number(document.getElementById('salary').value),
+        salary_type: document.getElementById('salary_type').value,
+        hours_per_day: Number(document.getElementById('hours_per_day').value),
+        days_per_week: Number(document.getElementById('days_per_week').value),
+        required_skills: document.getElementById('required_skills').value.split(',').map(s=>s.trim()).filter(Boolean),
+        requirements: document.getElementById('requirements').value.trim(),
+        application_deadline: document.getElementById('application_deadline').value
+      };
+
+      try{
+        if(editingJob){
+          await GZ.db.jobs.update(editingJob.id, payload);
+          GZ.toast('Job updated successfully.', 'success');
+          setTimeout(()=> window.location.href='manage-jobs.html', 700);
+        } else {
+          await GZ.db.jobs.insert({ business_id: biz.id, status:'active', ...payload });
+          GZ.toast('Job posted successfully \uD83C\uDF89', 'success');
+          form.reset();
+          setTimeout(()=> window.location.href='manage-jobs.html', 700);
+        }
+      }catch(err){
+        GZ.toast(err.message || 'Could not save job.', 'error');
+      }
+    });
+  });
+</script>
+</body>
+</html>

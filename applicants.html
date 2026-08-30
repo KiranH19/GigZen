@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Applicants — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Employer</div>
+        <h1 style="font-size:1.6rem;" id="job-title">Applicants</h1>
+      </div>
+      <a href="manage-jobs.html" class="btn btn-outline">Back to jobs</a>
+    </div>
+
+    <div class="pill-filter" id="status-filter" style="margin-bottom:18px;"></div>
+    <div id="applicant-list"></div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['employer']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('employer', 'manage');
+
+    const jobId = new URLSearchParams(location.search).get('job');
+    const job = await GZ.db.jobs.find(jobId);
+    const biz = await GZ.db.businesses.byOwner(user.id);
+
+    if(!job || !biz || job.business_id !== biz.id){
+      document.getElementById('applicant-list').innerHTML = GZ.emptyState('Job not found', 'This job may have been removed or does not belong to your account.', 'briefcase');
+    } else {
+      document.getElementById('job-title').textContent = 'Applicants — ' + job.title;
+
+      let active = 'all';
+      const statuses = ['all','applied','shortlisted','interview','hired','rejected'];
+      document.getElementById('status-filter').innerHTML = statuses.map(s=>`<button data-s="${s}" class="${s==='all'?'on':''}">${s==='all'?'All':s[0].toUpperCase()+s.slice(1)}</button>`).join('');
+
+      async function render(){
+        const apps = (await GZ.db.applications.byJob(job.id)).filter(a=> active==='all' || a.status===active);
+        const list = document.getElementById('applicant-list');
+        if(!apps.length){
+          list.innerHTML = GZ.emptyState('No applicants here', 'Try a different filter, or check back once students apply.', 'people');
+          return;
+        }
+        list.innerHTML = (await Promise.all(apps.map(async a=>{
+          const student = await GZ.db.users.find(a.student_id) || {};
+          const sp = await GZ.db.students.byUser(a.student_id) || {};
+          return `<div class="card card-pad" style="margin-bottom:14px;">
+            <div class="flex-between" style="align-items:flex-start;flex-wrap:wrap;gap:10px;">
+              <div>
+                <div class="flex gap-10" style="align-items:center;">
+                  <span class="avatar-dot">${GZ.initials(student.full_name)}</span>
+                  <div>
+                    <b>${GZ.escapeHtml(student.full_name||'Student')}</b>
+                    <div class="hint">${GZ.escapeHtml(sp.college||'')} ${sp.course?'· '+GZ.escapeHtml(sp.course):''}</div>
+                  </div>
+                </div>
+              </div>
+              ${GZ.badge(a.status)}
+            </div>
+            <div class="ticket-tags" style="margin:12px 0;">${(sp.skills||[]).map(s=>`<span class="tag">${GZ.escapeHtml(s)}</span>`).join('') || '<span class="hint">No skills listed</span>'}</div>
+            <p style="margin-bottom:6px;"><b>Availability:</b> ${GZ.escapeHtml(sp.availability||'\u2014')}</p>
+            <p style="margin-bottom:6px;"><b>Cover message:</b> ${GZ.escapeHtml(a.cover_message||'\u2014')}</p>
+            <p class="hint" style="margin-bottom:14px;">Applied ${GZ.formatDate(a.applied_at)} ${sp.resume_url ? `· <a href="${GZ.escapeHtml(sp.resume_url)}" target="_blank" rel="noopener">View resume</a>` : ''}</p>
+            <div class="flex gap-8" style="flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" data-id="${a.id}" data-status="shortlisted">Shortlist</button>
+              <button class="btn btn-outline btn-sm" data-id="${a.id}" data-status="interview">Interview</button>
+              <button class="btn btn-amber btn-sm" data-id="${a.id}" data-status="hired">Hire</button>
+              <button class="btn btn-danger btn-sm" data-id="${a.id}" data-status="rejected">Reject</button>
+            </div>
+          </div>`;
+        }))).join('');
+      }
+
+      document.getElementById('status-filter').addEventListener('click', e=>{
+        const btn = e.target.closest('button'); if(!btn) return;
+        active = btn.dataset.s;
+        [...document.getElementById('status-filter').children].forEach(b=> b.classList.toggle('on', b===btn));
+        render();
+      });
+
+      document.getElementById('applicant-list').addEventListener('click', async e=>{
+        const btn = e.target.closest('button[data-status]'); if(!btn) return;
+        try{
+          const app = await GZ.db.applications.find(btn.dataset.id);
+          await GZ.db.applications.update(app.id, { status: btn.dataset.status });
+          GZ.toast('Applicant marked as ' + btn.dataset.status + '.', 'success');
+          await render();
+        }catch(err){ GZ.toast(err.message||'Could not update applicant.','error'); }
+      });
+
+      await render();
+    }
+  });
+</script>
+</body>
+</html>

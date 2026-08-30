@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Applications — GigZen Admin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div><div class="eyebrow">Admin</div><h1 style="font-size:1.6rem;">All applications</h1></div>
+    </div>
+
+    <div class="pill-filter" id="status-filter" style="margin-bottom:18px;"></div>
+
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Student</th><th>Job</th><th>Business</th><th>Applied</th><th>Status</th></tr></thead>
+        <tbody id="apps-body"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const admin = await GZ.requireRole(['admin']);
+  if(!admin) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('admin', 'applications');
+
+    const jobMap = Object.fromEntries((await GZ.db.jobs.all()).map(j=>[j.id,j]));
+    const bizMap = Object.fromEntries((await GZ.db.businesses.all()).map(b=>[b.id,b]));
+    const userMap = Object.fromEntries((await GZ.db.users.all()).map(u=>[u.id,u]));
+
+    let active = 'all';
+    const statuses = ['all','applied','shortlisted','interview','hired','rejected'];
+    document.getElementById('status-filter').innerHTML = statuses.map(s=>`<button data-s="${s}" class="${s==='all'?'on':''}">${s==='all'?'All':s[0].toUpperCase()+s.slice(1)}</button>`).join('');
+
+    async function render(){
+      const list = (await GZ.db.applications.all()).filter(a=> active==='all' || a.status===active).sort((a,b)=> new Date(b.applied_at)-new Date(a.applied_at));
+      document.getElementById('apps-body').innerHTML = list.length ? list.map(a=>{
+        const job = jobMap[a.job_id] || {};
+        const biz = bizMap[job.business_id] || {};
+        const student = userMap[a.student_id] || {};
+        return `<tr>
+          <td>${GZ.escapeHtml(student.full_name||'\u2014')}</td>
+          <td style="font-weight:700;">${GZ.escapeHtml(job.title||'Removed job')}</td>
+          <td class="muted">${GZ.escapeHtml(biz.business_name||'\u2014')}</td>
+          <td class="muted">${GZ.formatDate(a.applied_at)}</td>
+          <td>${GZ.badge(a.status)}</td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="5">${GZ.emptyState('No applications found','','list')}</td></tr>`;
+    }
+
+    document.getElementById('status-filter').addEventListener('click', e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      active = btn.dataset.s;
+      [...document.getElementById('status-filter').children].forEach(b=> b.classList.toggle('on', b===btn));
+      render();
+    });
+
+    render();
+  });
+</script>
+</body>
+</html>

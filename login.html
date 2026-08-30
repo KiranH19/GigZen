@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-side">
+    <a class="brand" href="index.html" style="color:#fff;"><span class="brand-mark">G</span>GigZen</a>
+    <div class="quote-block">"Posted a cafe shift on Friday, had three applicants with resumes attached by Saturday morning."<br><span style="font-size:.9rem;color:#93a0c6;font-family:'Inter',sans-serif;">— Suresh Hegde, Cafe Coffee Bean, Hubli</span></div>
+    <div style="font-size:.78rem;color:#6c7ba3;">Demo password for every seed account: <b style="color:#cbd5f0;">password123</b></div>
+  </div>
+  <div class="auth-form-side">
+    <div class="auth-card">
+      <h2>Welcome back</h2>
+      <p>Log in to keep track of your applications or your jobs.</p>
+      <div class="err-box" id="err"></div>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="••••••••" required>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Log in</button>
+      </form>
+      <p style="margin-top:16px;font-size:.85rem;text-align:center;">New to GigZen? <a href="signup.html" style="color:var(--navy-700);font-weight:700;">Create an account</a></p>
+      <p style="margin-top:6px;font-size:.78rem;text-align:center;" class="muted">Try: ananya.student@gigzen.test or suresh.employer@gigzen.test</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+    if(GZ.currentUser()){ window.location.href = GZ.redirectForRole(GZ.currentUser().role); return; }
+
+    document.getElementById('login-form').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const errBox = document.getElementById('err');
+      errBox.classList.remove('show');
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try{
+        const user = await GZ.db.auth.signIn(email, password);
+        GZ.toast('Welcome back, ' + (user.full_name.split(' ')[0] || '') + '!', 'success');
+        window.location.href = GZ.redirectForRole(user.role);
+      }catch(err){
+        errBox.textContent = err.message || 'That email and password combination doesn\'t match our records.';
+        errBox.classList.add('show');
+        btn.disabled = false;
+      }
+    });
+  });
+</script>
+</body>
+</html>

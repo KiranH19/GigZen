@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Profile — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Employer</div>
+        <h1 style="font-size:1.6rem;">Business profile</h1>
+      </div>
+    </div>
+
+    <div class="card card-pad" style="max-width:640px;">
+      <form id="biz-form">
+        <div class="field"><label for="business_name">Business name</label><input type="text" id="business_name" required></div>
+        <div class="field-row">
+          <div class="field"><label for="category">Category</label>
+            <select id="category">
+              <option>Cafe & Restaurant</option><option>Retail & Sales</option><option>Education</option>
+              <option>IT & Web Services</option><option>Events</option><option>Logistics</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label for="city">City</label><input type="text" id="city" required></div>
+        </div>
+        <div class="field"><label for="address">Address</label><input type="text" id="address"></div>
+        <div class="field-row">
+          <div class="field"><label for="phone">Phone</label><input type="tel" id="phone"></div>
+          <div class="field"><label for="logo_url">Logo URL</label><input type="text" id="logo_url" placeholder="Optional image link"></div>
+        </div>
+        <div class="field"><label for="description">About your business</label><textarea id="description" placeholder="What you do, and why students would want to work here"></textarea></div>
+        <button class="btn btn-primary" type="submit">Save business profile</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['employer']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('employer', 'profile');
+
+    if(new URLSearchParams(location.search).get('welcome')){
+      GZ.toast('Account created — set up your business to start posting jobs.', 'success');
+    }
+
+    let biz = await GZ.db.businesses.byOwner(user.id);
+    if(biz){
+      document.getElementById('business_name').value = biz.business_name || '';
+      document.getElementById('category').value = biz.category || '';
+      document.getElementById('city').value = biz.city || '';
+      document.getElementById('address').value = biz.address || '';
+      document.getElementById('phone').value = biz.phone || user.phone || '';
+      document.getElementById('logo_url').value = biz.logo_url || '';
+      document.getElementById('description').value = biz.description || '';
+    } else {
+      document.getElementById('phone').value = user.phone || '';
+    }
+
+    document.getElementById('biz-form').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const payload = {
+        business_name: document.getElementById('business_name').value.trim(),
+        category: document.getElementById('category').value,
+        city: document.getElementById('city').value.trim(),
+        location: document.getElementById('city').value.trim(),
+        address: document.getElementById('address').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        logo_url: document.getElementById('logo_url').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        email: user.email
+      };
+      try{
+        if(biz){
+          biz = await GZ.db.businesses.update(biz.id, payload);
+        } else {
+          biz = await GZ.db.businesses.insert({ owner_id: user.id, verified:false, ...payload });
+        }
+        GZ.toast('Business profile saved.', 'success');
+      }catch(err){
+        GZ.toast(err.message || 'Could not save profile.', 'error');
+      }
+    });
+  });
+</script>
+</body>
+</html>

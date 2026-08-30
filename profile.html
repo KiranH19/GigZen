@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Profile — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Student</div>
+        <h1 style="font-size:1.6rem;">My profile</h1>
+      </div>
+    </div>
+
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="flex-between" style="margin-bottom:8px;">
+        <b id="completion-label">Profile 0% complete</b>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="completion-fill" style="width:0%;"></div></div>
+    </div>
+
+    <div class="card card-pad" style="max-width:640px;">
+      <form id="profile-form">
+        <div class="field">
+          <label>Profile photo</label>
+          <div class="flex gap-14" style="align-items:center;">
+            <span class="avatar-dot" id="avatar-preview" style="width:52px;height:52px;font-size:1.1rem;"></span>
+            <div>
+              <input type="text" id="avatar_url" placeholder="Paste an image URL (optional)">
+              <div class="hint">No file storage in this demo — paste a link instead of uploading.</div>
+            </div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="full_name">Full name</label><input type="text" id="full_name"></div>
+          <div class="field"><label for="phone">Phone</label><input type="tel" id="phone"></div>
+        </div>
+        <div class="field"><label for="college">College</label><input type="text" id="college" placeholder="e.g. KLE Institute of Technology, Hubli"></div>
+        <div class="field-row">
+          <div class="field"><label for="course">Course</label><input type="text" id="course" placeholder="e.g. Computer Science"></div>
+          <div class="field"><label for="year">Year</label>
+            <select id="year">
+              <option value="">Select year</option>
+              <option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>Final Year</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label for="skills">Skills</label><input type="text" id="skills" placeholder="Comma-separated, e.g. Excel, Communication"></div>
+        <div class="field"><label for="bio">Bio</label><textarea id="bio" placeholder="A couple of lines about you"></textarea></div>
+        <div class="field"><label for="availability">Availability</label><input type="text" id="availability" placeholder="e.g. Weekends + evenings"></div>
+        <div class="field"><label for="resume_url">Resume link</label><input type="text" id="resume_url" placeholder="Paste a link to your resume (Drive, etc.)"></div>
+        <button class="btn btn-primary" type="submit">Save profile</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['student']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('student', 'profile');
+
+    if(new URLSearchParams(location.search).get('welcome')){
+      GZ.toast('Account created — let\'s finish your profile.', 'success');
+    }
+
+    let profile = await GZ.db.students.byUser(user.id) || await GZ.db.students.upsert(user.id, {});
+
+    document.getElementById('full_name').value = user.full_name || '';
+    document.getElementById('phone').value = user.phone || '';
+    document.getElementById('avatar_url').value = user.avatar_url || '';
+    document.getElementById('college').value = profile.college || '';
+    document.getElementById('course').value = profile.course || '';
+    document.getElementById('year').value = profile.year || '';
+    document.getElementById('skills').value = (profile.skills||[]).join(', ');
+    document.getElementById('bio').value = profile.bio || '';
+    document.getElementById('availability').value = profile.availability || '';
+    document.getElementById('resume_url').value = profile.resume_url || '';
+    document.getElementById('avatar-preview').textContent = GZ.initials(user.full_name);
+
+    function computeCompletion(p, u){
+      const fields = [u.full_name, u.phone, p.college, p.course, p.year, (p.skills||[]).length, p.bio, p.availability, p.resume_url];
+      const filled = fields.filter(Boolean).length;
+      return Math.round((filled/fields.length)*100);
+    }
+    function paintCompletion(){
+      const pct = computeCompletion(profile, user);
+      document.getElementById('completion-label').textContent = `Profile ${pct}% complete`;
+      document.getElementById('completion-fill').style.width = pct + '%';
+    }
+    paintCompletion();
+
+    document.getElementById('profile-form').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const full_name = document.getElementById('full_name').value.trim() || user.full_name;
+      const phone = document.getElementById('phone').value.trim();
+      const avatar_url = document.getElementById('avatar_url').value.trim();
+      await GZ.db.users.update(user.id, { full_name, phone, avatar_url });
+      user.full_name = full_name; user.phone = phone; user.avatar_url = avatar_url;
+
+      const skills = document.getElementById('skills').value.split(',').map(s=>s.trim()).filter(Boolean);
+      const patch = {
+        college: document.getElementById('college').value.trim(),
+        course: document.getElementById('course').value.trim(),
+        year: document.getElementById('year').value,
+        skills,
+        bio: document.getElementById('bio').value.trim(),
+        availability: document.getElementById('availability').value.trim(),
+        resume_url: document.getElementById('resume_url').value.trim()
+      };
+      profile = await GZ.db.students.upsert(user.id, patch);
+
+      paintCompletion();
+      GZ.toast('Profile saved.', 'success');
+    });
+  });
+</script>
+</body>
+</html>

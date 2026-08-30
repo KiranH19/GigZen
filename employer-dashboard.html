@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employer Dashboard — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Employer dashboard</div>
+        <h1 id="welcome" style="font-size:1.6rem;"></h1>
+      </div>
+      <div class="flex gap-10">
+        <a href="post-job.html" class="btn btn-primary">Post Job</a>
+        <a href="manage-jobs.html" class="btn btn-outline">Manage Jobs</a>
+      </div>
+    </div>
+
+    <div id="biz-nudge"></div>
+    <div class="stat-grid" id="stats"></div>
+
+    <div class="card card-pad">
+      <div class="flex-between" style="margin-bottom:10px;">
+        <h3 style="margin:0;">Your active jobs</h3>
+        <a href="manage-jobs.html" class="btn btn-ghost btn-sm">Manage all</a>
+      </div>
+      <div class="table-wrap">
+        <table id="jobs-table">
+          <thead><tr><th>Title</th><th>Status</th><th>Applicants</th><th>Posted</th><th></th></tr></thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </div>
+      <div id="jobs-empty"></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['employer']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('employer', 'dashboard');
+    document.getElementById('welcome').textContent = 'Welcome back, ' + user.full_name.split(' ')[0];
+
+    const biz = await GZ.db.businesses.byOwner(user.id);
+    if(!biz){
+      document.getElementById('biz-nudge').innerHTML = `<div class="card card-pad" style="margin-bottom:20px;border-color:var(--amber);background:#fffaf0;">
+        <b>Set up your business profile</b><p style="margin:4px 0 0;">Add your business details so students know who they're applying to.</p>
+        <a class="btn btn-amber btn-sm" href="employer-profile.html">Set up now</a></div>`;
+    }
+
+    const jobs = biz ? await GZ.db.jobs.byBusiness(biz.id) : [];
+    const apps = (await GZ.db.applications.all()).filter(a=> jobs.some(j=>j.id===a.job_id));
+
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-tile"><div class="stat-num">${jobs.filter(j=>j.status==='active').length}</div><div class="stat-label">Active jobs</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.length}</div><div class="stat-label">Total applications</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.filter(a=>a.status==='shortlisted'||a.status==='interview').length}</div><div class="stat-label">Shortlisted</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.filter(a=>a.status==='hired').length}</div><div class="stat-label">Hired</div></div>
+    `;
+
+    const table = document.getElementById('jobs-table');
+    const empty = document.getElementById('jobs-empty');
+    if(!jobs.length){
+      table.style.display='none';
+      empty.innerHTML = GZ.emptyState('No jobs posted yet', 'Post your first job to start receiving applications.', 'briefcase');
+    } else {
+      document.getElementById('jobs-body').innerHTML = (await Promise.all(jobs.slice(0,6).map(async j=>{
+        const count = (await GZ.db.applications.byJob(j.id)).length;
+        return `<tr>
+          <td style="font-weight:700;">${GZ.escapeHtml(j.title)}</td>
+          <td>${GZ.badge(j.status)}</td>
+          <td>${count}</td>
+          <td class="muted">${GZ.timeAgo(j.created_at)}</td>
+          <td><a class="btn btn-ghost btn-sm" href="applicants.html?job=${j.id}">View applicants</a></td>
+        </tr>`;
+      }))).join('');
+    }
+  });
+</script>
+</body>
+</html>

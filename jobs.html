@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Find Jobs — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+
+<div class="container" style="padding-top:32px;">
+  <div class="eyebrow">Job board</div>
+  <h1 style="font-size:1.8rem;">Find part-time jobs</h1>
+
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div class="field" style="margin-bottom:14px;">
+      <input type="text" id="q" placeholder="Search jobs, skills or companies">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>City</label>
+        <select id="f-city"><option value="">All cities</option></select>
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="f-category"><option value="">All categories</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Job type</label>
+        <select id="f-type"><option value="">Any type</option></select>
+      </div>
+      <div class="field">
+        <label>Max hours/day</label>
+        <select id="f-hours">
+          <option value="">Any</option>
+          <option value="2">Up to 2 hrs</option>
+          <option value="4">Up to 4 hrs</option>
+          <option value="6">Up to 6 hrs</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex-between" style="flex-wrap:wrap;gap:10px;">
+      <div class="hint" id="result-count"></div>
+      <button class="btn btn-ghost btn-sm" id="clear-filters">Clear filters</button>
+    </div>
+  </div>
+
+  <div id="job-list" style="margin-bottom:50px;"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  GZ.mountNav('jobs');
+
+  const jobs = (await GZ.db.jobs.all()).filter(j=>j.status==='active');
+  const businesses = await GZ.db.businesses.all();
+  const bizMap = Object.fromEntries(businesses.map(b=>[b.id,b]));
+
+  const cities = [...new Set(jobs.map(j=>j.city))].sort();
+  const cats = [...new Set(jobs.map(j=>j.category))].sort();
+  const types = [...new Set(jobs.map(j=>j.job_type))].sort();
+  document.getElementById('f-city').innerHTML += cities.map(c=>`<option value="${c}">${c}</option>`).join('');
+  document.getElementById('f-category').innerHTML += cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  document.getElementById('f-type').innerHTML += types.map(c=>`<option value="${c}">${c}</option>`).join('');
+
+  const params = new URLSearchParams(location.search);
+  if(params.get('category')) document.getElementById('f-category').value = params.get('category');
+
+  function ticketCard(job){
+    const biz = bizMap[job.business_id] || {};
+    return `<div class="ticket">
+      <div class="ticket-body">
+        <div class="ticket-top">
+          <div>
+            <h3 class="ticket-title"><a href="job-details.html?id=${job.id}">${GZ.escapeHtml(job.title)}</a></h3>
+            <div class="ticket-biz">${GZ.escapeHtml(biz.business_name||'')} · ${GZ.escapeHtml(job.city)}</div>
+          </div>
+        </div>
+        <div class="ticket-meta">
+          <span>${GZ.escapeHtml(job.location)}</span>
+          <span>${job.hours_per_day} hrs/day · ${job.days_per_week} days/wk</span>
+          <span>Posted ${GZ.timeAgo(job.created_at)}</span>
+        </div>
+        <div class="ticket-tags">
+          <span class="tag">${GZ.escapeHtml(job.job_type)}</span>
+          ${(job.required_skills||[]).slice(0,4).map(s=>`<span class="tag">${GZ.escapeHtml(s)}</span>`).join('')}
+        </div>
+      </div>
+      <div class="ticket-stub">
+        <div><div class="stub-amt">${GZ.formatSalary(job)}</div><div class="stub-sub">${GZ.escapeHtml(job.job_type)}</div></div>
+        <a class="btn btn-amber btn-sm" href="job-details.html?id=${job.id}">View job</a>
+      </div>
+    </div>`;
+  }
+
+  function render(){
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const city = document.getElementById('f-city').value;
+    const category = document.getElementById('f-category').value;
+    const type = document.getElementById('f-type').value;
+    const hours = document.getElementById('f-hours').value;
+
+    let list = jobs.filter(j=>{
+      const biz = bizMap[j.business_id] || {};
+      const haystack = [j.title, j.category, j.city, biz.business_name, ...(j.required_skills||[])].join(' ').toLowerCase();
+      if(q && !haystack.includes(q)) return false;
+      if(city && j.city !== city) return false;
+      if(category && j.category !== category) return false;
+      if(type && j.job_type !== type) return false;
+      if(hours && Number(j.hours_per_day) > Number(hours)) return false;
+      return true;
+    }).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+
+    document.getElementById('result-count').textContent = list.length + ' job' + (list.length===1?'':'s') + ' found';
+    document.getElementById('job-list').innerHTML = list.length
+      ? list.map(ticketCard).join('')
+      : GZ.emptyState('No jobs match those filters', 'Try widening your search or clearing filters.', 'search');
+  }
+
+  ['q','f-city','f-category','f-type','f-hours'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', render);
+    document.getElementById(id).addEventListener('change', render);
+  });
+  document.getElementById('clear-filters').addEventListener('click', ()=>{
+    ['q','f-city','f-category','f-type','f-hours'].forEach(id=> document.getElementById(id).value='');
+    render();
+  });
+
+  render();
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GigZen — Part-time jobs for students in Hubli-Dharwad</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+
+<header class="hero">
+  <div class="container hero-inner">
+    <div class="eyebrow" style="color:var(--amber)">Hubli · Dharwad · and growing</div>
+    <h1>Find part-time jobs that fit your life</h1>
+    <p>Discover flexible jobs near your college, earn while you study, and gain real-world experience — without the long commute or the awkward walk-ins.</p>
+    <div class="hero-cta">
+      <a href="jobs.html" class="btn btn-amber">Find Jobs</a>
+      <a href="signup.html?role=employer" class="btn btn-outline" style="border-color:rgba(255,255,255,.3);color:#fff;">I'm Hiring</a>
+    </div>
+    <div class="hero-strip" id="hero-stats"></div>
+  </div>
+</header>
+
+<section class="section-tight">
+  <div class="container">
+    <div class="eyebrow">How it works</div>
+    <h2>Three steps, no waiting rooms</h2>
+    <div class="how-grid" style="margin-top:20px;">
+      <div class="how-card"><div class="how-num">1</div><h3>Build your profile</h3><p>Add your college, course and skills once — it follows you into every application.</p></div>
+      <div class="how-card"><div class="how-num">2</div><h3>Apply in a tap</h3><p>Filter by location, hours and pay, then apply with a short note. No forms, no photocopies.</p></div>
+      <div class="how-card"><div class="how-num">3</div><h3>Track and get hired</h3><p>Watch your application move from applied to shortlisted to hired, right from your dashboard.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section-tight" style="background:var(--cloud-deep);">
+  <div class="container">
+    <div class="eyebrow">Popular categories</div>
+    <h2>Whatever your timetable allows</h2>
+    <div class="cat-grid" style="margin-top:20px;" id="cat-grid"></div>
+  </div>
+</section>
+
+<section class="section-tight">
+  <div class="container">
+    <div class="flex-between" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div class="eyebrow">Fresh off the board</div>
+        <h2>Latest jobs</h2>
+      </div>
+      <a href="jobs.html" class="btn btn-outline btn-sm">View all jobs</a>
+    </div>
+    <div id="latest-jobs" style="margin-top:20px;"></div>
+  </div>
+</section>
+
+<section class="section-tight" style="background:var(--navy-950);color:#fff;">
+  <div class="container">
+    <div class="how-grid">
+      <div>
+        <div class="eyebrow" style="color:var(--amber)">For students</div>
+        <h2 style="color:#fff;">Work that respects your class schedule</h2>
+        <p style="color:#b7c0dd;">Every listing states hours per day and days per week upfront, so you know exactly what you're signing up for before you apply.</p>
+      </div>
+      <div>
+        <div class="eyebrow" style="color:var(--amber)">For businesses</div>
+        <h2 style="color:#fff;">Reach students near your shopfront</h2>
+        <p style="color:#b7c0dd;">Post a job in minutes, review applicants with their college and skills already listed, and hire without a single phone tag.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container flex-between" style="flex-wrap:wrap;gap:14px;">
+    <a class="brand" href="index.html"><span class="brand-mark">G</span>GigZen</a>
+    <span>&copy; 2026 GigZen · Built for students in Hubli-Dharwad, Karnataka</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  GZ.mountNav('home');
+
+  const jobs = (await GZ.db.jobs.all()).filter(j=>j.status==='active');
+  const businesses = await GZ.db.businesses.all();
+  const bizMap = Object.fromEntries(businesses.map(b=>[b.id,b]));
+  const stats = await GZ.db.landingStats();
+
+  document.getElementById('hero-stats').innerHTML = `
+    <div><b>${stats.active_jobs}+</b><span>Active listings</span></div>
+    <div><b>${stats.businesses}+</b><span>Local businesses</span></div>
+    <div><b>${(stats.hired||0) + 12}+</b><span>Students hired</span></div>
+  `;
+
+  const cats = [...new Set(jobs.map(j=>j.category))];
+  document.getElementById('cat-grid').innerHTML = cats.map(c=>`<a class="cat-tile" href="jobs.html?category=${encodeURIComponent(c)}">${GZ.escapeHtml(c)}</a>`).join('');
+
+  function ticketCard(job){
+    const biz = bizMap[job.business_id] || {};
+    return `<div class="ticket">
+      <div class="ticket-body">
+        <div class="ticket-top">
+          <div>
+            <h3 class="ticket-title"><a href="job-details.html?id=${job.id}">${GZ.escapeHtml(job.title)}</a></h3>
+            <div class="ticket-biz">${GZ.escapeHtml(biz.business_name||'')}</div>
+          </div>
+        </div>
+        <div class="ticket-meta">
+          <span>${GZ.ICONS.home.replace('viewBox="0 0 24 24"','viewBox="0 0 24 24" width="14" height="14"')} ${GZ.escapeHtml(job.location)}</span>
+          <span>${job.hours_per_day} hrs/day · ${job.days_per_week} days/wk</span>
+          <span>Posted ${GZ.timeAgo(job.created_at)}</span>
+        </div>
+        <div class="ticket-tags">
+          <span class="tag">${GZ.escapeHtml(job.job_type)}</span>
+          ${(job.required_skills||[]).slice(0,3).map(s=>`<span class="tag">${GZ.escapeHtml(s)}</span>`).join('')}
+        </div>
+      </div>
+      <div class="ticket-stub">
+        <div><div class="stub-amt">${GZ.formatSalary(job)}</div><div class="stub-sub">${GZ.escapeHtml(job.job_type)}</div></div>
+        <a class="btn btn-amber btn-sm" href="job-details.html?id=${job.id}">View job</a>
+      </div>
+    </div>`;
+  }
+
+  const latest = [...jobs].sort((a,b)=> new Date(b.created_at)-new Date(a.created_at)).slice(0,4);
+  document.getElementById('latest-jobs').innerHTML = latest.length ? latest.map(ticketCard).join('') : GZ.emptyState('No jobs yet','Check back soon.');
+  });
+</script>
+</body>
+</html>

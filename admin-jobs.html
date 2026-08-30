@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Jobs — GigZen Admin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div><div class="eyebrow">Admin</div><h1 style="font-size:1.6rem;">All jobs</h1></div>
+    </div>
+
+    <div class="field" style="max-width:340px;margin-bottom:16px;">
+      <input type="text" id="q" placeholder="Search by title or business">
+    </div>
+
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Title</th><th>Business</th><th>City</th><th>Status</th><th>Posted</th><th>Action</th></tr></thead>
+        <tbody id="jobs-body"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const admin = await GZ.requireRole(['admin']);
+  if(!admin) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('admin', 'jobs');
+
+    const bizMap = Object.fromEntries((await GZ.db.businesses.all()).map(b=>[b.id,b]));
+
+    async function render(){
+      const q = document.getElementById('q').value.trim().toLowerCase();
+      const jobs = (await GZ.db.jobs.all()).filter(j=>{
+        const biz = bizMap[j.business_id] || {};
+        return !q || (j.title+' '+(biz.business_name||'')).toLowerCase().includes(q);
+      }).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+
+      document.getElementById('jobs-body').innerHTML = jobs.length ? jobs.map(j=>{
+        const biz = bizMap[j.business_id] || {};
+        return `<tr>
+          <td style="font-weight:700;"><a href="job-details.html?id=${j.id}" target="_blank">${GZ.escapeHtml(j.title)}</a></td>
+          <td class="muted">${GZ.escapeHtml(biz.business_name||'\u2014')}</td>
+          <td class="muted">${GZ.escapeHtml(j.city)}</td>
+          <td>${GZ.badge(j.status)}</td>
+          <td class="muted">${GZ.formatDate(j.created_at)}</td>
+          <td>
+            <div class="flex gap-8" style="flex-wrap:wrap;">
+              ${j.status!=='closed' ? `<button class="btn btn-outline btn-sm" data-id="${j.id}" data-act="close">Close</button>` : `<button class="btn btn-outline btn-sm" data-id="${j.id}" data-act="activate">Reopen</button>`}
+              <button class="btn btn-danger btn-sm" data-id="${j.id}" data-act="remove">Remove</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="6">${GZ.emptyState('No jobs found','','briefcase')}</td></tr>`;
+    }
+
+    document.getElementById('q').addEventListener('input', render);
+    document.getElementById('jobs-body').addEventListener('click', async e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      const id = btn.dataset.id, act = btn.dataset.act;
+      try{
+        if(act==='close') await GZ.db.jobs.update(id, {status:'closed'});
+        if(act==='activate') await GZ.db.jobs.update(id, {status:'active'});
+        if(act==='remove'){ if(confirm('Remove this job? This cannot be undone.')) await GZ.db.jobs.remove(id); }
+        GZ.toast('Job updated.', 'success');
+        await render();
+      }catch(err){ GZ.toast(err.message||'Could not update job.','error'); }
+    });
+
+    await render();
+  });
+</script>
+</body>
+</html>

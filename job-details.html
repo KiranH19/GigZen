@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job details — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+
+<div class="container" style="padding-top:32px;max-width:820px;">
+  <a href="jobs.html" class="btn btn-ghost btn-sm" style="margin-bottom:14px;padding-left:0;">&larr; Back to jobs</a>
+  <div id="content"></div>
+</div>
+
+<div class="modal-backdrop" id="apply-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 style="margin:0;">Apply for this job</h3>
+      <button class="modal-close" onclick="GZ.closeModal('apply-modal')">&times;</button>
+    </div>
+    <p style="font-size:.86rem;">Add a short note so the employer knows why you're a good fit.</p>
+    <div class="field">
+      <label for="cover-message">Cover message</label>
+      <textarea id="cover-message" placeholder="e.g. I've worked at my family's shop handling billing and customers..."></textarea>
+    </div>
+    <button class="btn btn-primary btn-block" id="submit-application">Submit application</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  GZ.mountNav('jobs');
+  const id = new URLSearchParams(location.search).get('id');
+  const job = await GZ.db.jobs.find(id);
+  const content = document.getElementById('content');
+
+  if(!job){
+    content.innerHTML = GZ.emptyState('Job not found', 'This listing may have been removed.', 'search');
+    return;
+  }
+
+    const biz = await GZ.db.businesses.find(job.business_id) || {};
+    const user = GZ.currentUser();
+    const already = user && user.role==='student' ? await GZ.db.applications.existing(job.id, user.id) : null;
+
+    let applyBtn = `<a class="btn btn-amber" href="login.html">Log in to apply</a>`;
+    if(user && user.role==='student'){
+      applyBtn = already
+        ? `<button class="btn btn-outline" disabled>Already applied ${GZ.badge(already.status)}</button>`
+        : `<button class="btn btn-amber" id="open-apply">Apply Now</button>`;
+    } else if(user && user.role!=='student'){
+      applyBtn = `<span class="hint">Only student accounts can apply.</span>`;
+    }
+
+    content.innerHTML = `
+      <div class="card card-pad">
+        <div class="flex-between" style="align-items:flex-start;flex-wrap:wrap;gap:14px;">
+          <div>
+            <h1 style="font-size:1.6rem;">${GZ.escapeHtml(job.title)}</h1>
+            <div class="ticket-biz" style="margin-bottom:8px;">${GZ.escapeHtml(biz.business_name||'')} · ${GZ.escapeHtml(job.city)}</div>
+            <div class="ticket-tags" style="margin-bottom:6px;">
+              <span class="tag">${GZ.escapeHtml(job.job_type)}</span>
+              <span class="tag">${GZ.escapeHtml(job.category)}</span>
+              ${GZ.badge(job.status)}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div class="stub-amt" style="color:var(--navy-950);font-size:1.4rem;">${GZ.formatSalary(job)}</div>
+            <div class="stub-sub" style="color:var(--ink-faint)">${job.hours_per_day} hrs/day · ${job.days_per_week} days/wk</div>
+          </div>
+        </div>
+
+        <div style="margin:20px 0;border-top:1px solid var(--line);padding-top:18px;">
+          <h3>Description</h3>
+          <p>${GZ.escapeHtml(job.description)}</p>
+          <h3>Requirements</h3>
+          <p>${GZ.escapeHtml(job.requirements||'\u2014')}</p>
+          <h3>Required skills</h3>
+          <div class="ticket-tags">${(job.required_skills||[]).map(s=>`<span class="tag">${GZ.escapeHtml(s)}</span>`).join('')}</div>
+        </div>
+
+        <div class="flex-between" style="flex-wrap:wrap;gap:10px;border-top:1px solid var(--line);padding-top:16px;">
+          <div class="hint">Location: ${GZ.escapeHtml(job.location)} · Apply by ${GZ.formatDate(job.application_deadline)}</div>
+          <div class="flex gap-8" style="flex-wrap:wrap;">
+            ${applyBtn}
+            ${user && user.role==='student' ? `<button class="btn btn-ghost btn-sm" id="open-report">Report</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-top:16px;">
+        <h3>About ${GZ.escapeHtml(biz.business_name||'this business')}</h3>
+        <p>${GZ.escapeHtml(biz.description||'No description provided yet.')}</p>
+        <div class="hint">${GZ.escapeHtml(biz.address||'')}</div>
+      </div>
+    `;
+
+    const openBtn = document.getElementById('open-apply');
+    if(openBtn) openBtn.addEventListener('click', ()=> GZ.openModal('apply-modal'));
+
+    document.getElementById('submit-application').addEventListener('click', async function(){
+      const msg = document.getElementById('cover-message').value.trim();
+      try{
+        if(await GZ.db.applications.existing(job.id, user.id)){
+          GZ.toast('You already applied to this job.', 'error');
+          GZ.closeModal('apply-modal');
+          return;
+        }
+        await GZ.db.applications.insert({
+          job_id: job.id, student_id: user.id, cover_message: msg, status:'applied'
+        });
+        GZ.closeModal('apply-modal');
+        GZ.toast('Application submitted successfully \uD83C\uDF89', 'success');
+        setTimeout(()=> window.location.reload(), 900);
+      }catch(err){
+        GZ.toast(err.message || 'Could not submit application.', 'error');
+      }
+    });
+
+    const reportBtn = document.getElementById('open-report');
+    if(reportBtn){
+      reportBtn.addEventListener('click', async ()=>{
+        const reason = prompt('Why are you reporting this job?');
+        if(!reason) return;
+        try{
+          await GZ.db.reports.insert({ job_id: job.id, reporter_id: user.id, reason, description: '' });
+          GZ.toast('Report sent. Thanks for flagging this.', 'success');
+        }catch(err){
+          GZ.toast(err.message || 'Could not send report.', 'error');
+        }
+      });
+    }
+  });
+</script>
+</body>
+</html>

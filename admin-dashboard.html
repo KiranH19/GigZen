@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Overview — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Admin</div>
+        <h1 style="font-size:1.6rem;">Platform overview</h1>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="stats"></div>
+
+    <div class="how-grid">
+      <div class="card card-pad">
+        <div class="flex-between" style="margin-bottom:10px;"><h3 style="margin:0;">Recently posted jobs</h3><a class="btn btn-ghost btn-sm" href="admin-jobs.html">Manage</a></div>
+        <div id="recent-jobs"></div>
+      </div>
+      <div class="card card-pad">
+        <div class="flex-between" style="margin-bottom:10px;"><h3 style="margin:0;">Open reports</h3><a class="btn btn-ghost btn-sm" href="admin-reports.html">Manage</a></div>
+        <div id="recent-reports"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['admin']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('admin', 'dashboard');
+
+    const users = await GZ.db.users.all();
+    const jobs = await GZ.db.jobs.all();
+    const apps = await GZ.db.applications.all();
+    const reports = await GZ.db.reports.all();
+    const bizMap = Object.fromEntries((await GZ.db.businesses.all()).map(b=>[b.id,b]));
+
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-tile"><div class="stat-num">${users.filter(u=>u.role==='student').length}</div><div class="stat-label">Total students</div></div>
+      <div class="stat-tile"><div class="stat-num">${users.filter(u=>u.role==='employer').length}</div><div class="stat-label">Total employers</div></div>
+      <div class="stat-tile"><div class="stat-num">${jobs.length}</div><div class="stat-label">Total jobs</div></div>
+      <div class="stat-tile"><div class="stat-num">${jobs.filter(j=>j.status==='active').length}</div><div class="stat-label">Active jobs</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.length}</div><div class="stat-label">Total applications</div></div>
+      <div class="stat-tile"><div class="stat-num">${apps.filter(a=>a.status==='hired').length}</div><div class="stat-label">Hired students</div></div>
+    `;
+
+    const recentJobs = [...jobs].sort((a,b)=> new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
+    document.getElementById('recent-jobs').innerHTML = recentJobs.length ? recentJobs.map(j=>{
+      const biz = bizMap[j.business_id]||{};
+      return `<div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <div><b>${GZ.escapeHtml(j.title)}</b><div class="hint">${GZ.escapeHtml(biz.business_name||'')} · ${GZ.escapeHtml(j.city)}</div></div>
+        ${GZ.badge(j.status)}
+      </div>`;
+    }).join('') : GZ.emptyState('No jobs yet','','briefcase');
+
+    const openReports = reports.filter(r=>r.status!=='resolved');
+    document.getElementById('recent-reports').innerHTML = openReports.length ? (await Promise.all(openReports.slice(0,5).map(async r=>{
+      const job = await GZ.db.jobs.find(r.job_id);
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--line);">
+        <b>${GZ.escapeHtml(job ? job.title : 'Removed job')}</b>
+        <div class="hint">${GZ.escapeHtml(r.reason)} — ${GZ.timeAgo(r.created_at)}</div>
+      </div>`;
+    }))).join('') : GZ.emptyState('No open reports','Nothing needs your attention right now.','flag');
+  });
+</script>
+</body>
+</html>

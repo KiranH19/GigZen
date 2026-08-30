@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Jobs — GigZen</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="gz-nav"></div>
+<div class="shell">
+  <div id="gz-sidebar"></div>
+  <main class="main">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Employer</div>
+        <h1 style="font-size:1.6rem;">Manage jobs</h1>
+      </div>
+      <a href="post-job.html" class="btn btn-primary">Post Job</a>
+    </div>
+
+    <div class="pill-filter" id="status-filter" style="margin-bottom:18px;"></div>
+
+    <div class="card table-wrap">
+      <table id="jobs-table">
+        <thead><tr><th>Title</th><th>Status</th><th>Applications</th><th>Posted</th><th style="min-width:280px;">Actions</th></tr></thead>
+        <tbody id="jobs-body"></tbody>
+      </table>
+    </div>
+    <div id="jobs-empty"></div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="delete-modal">
+  <div class="modal">
+    <div class="modal-head"><h3 style="margin:0;">Delete this job?</h3><button class="modal-close" onclick="GZ.closeModal('delete-modal')">&times;</button></div>
+    <p>This can't be undone. Applications tied to this job will remain in your records but the listing will be removed.</p>
+    <div class="flex gap-10">
+      <button class="btn btn-outline btn-block" onclick="GZ.closeModal('delete-modal')">Cancel</button>
+      <button class="btn btn-danger btn-block" id="confirm-delete">Delete job</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script>
+  GZ.boot(async function(){
+  const user = await GZ.requireRole(['employer']);
+  if(!user) return;
+    GZ.mountNav('dashboard');
+    GZ.mountSidebar('employer', 'manage');
+
+    const biz = await GZ.db.businesses.byOwner(user.id);
+    let active = 'all';
+    let pendingDeleteId = null;
+    const statuses = ['all','active','paused','closed'];
+    document.getElementById('status-filter').innerHTML = statuses.map(s=>`<button data-s="${s}" class="${s==='all'?'on':''}">${s==='all'?'All':s[0].toUpperCase()+s.slice(1)}</button>`).join('');
+
+    async function render(){
+      const jobs = biz ? (await GZ.db.jobs.byBusiness(biz.id)).filter(j=> active==='all' || j.status===active) : [];
+      const table = document.getElementById('jobs-table');
+      const empty = document.getElementById('jobs-empty');
+      if(!jobs.length){
+        table.style.display='none';
+        empty.innerHTML = GZ.emptyState('No jobs here', biz ? 'Try a different filter or post a new job.' : 'Set up your business profile first.', 'briefcase');
+        return;
+      }
+      table.style.display='';
+      empty.innerHTML='';
+      document.getElementById('jobs-body').innerHTML = (await Promise.all(jobs.map(async j=>{
+        const count = (await GZ.db.applications.byJob(j.id)).length;
+        return `<tr>
+          <td style="font-weight:700;">${GZ.escapeHtml(j.title)}<div class="hint">${GZ.escapeHtml(j.city)}</div></td>
+          <td>${GZ.badge(j.status)}</td>
+          <td><a href="applicants.html?job=${j.id}">${count} applicant${count===1?'':'s'}</a></td>
+          <td class="muted">${GZ.timeAgo(j.created_at)}</td>
+          <td>
+            <div class="flex gap-8" style="flex-wrap:wrap;">
+              <a class="btn btn-ghost btn-sm" href="post-job.html?edit=${j.id}">Edit</a>
+              ${j.status==='active' ? `<button class="btn btn-outline btn-sm" data-act="pause" data-id="${j.id}">Pause</button>` : ''}
+              ${j.status==='paused' ? `<button class="btn btn-outline btn-sm" data-act="activate" data-id="${j.id}">Activate</button>` : ''}
+              ${j.status!=='closed' ? `<button class="btn btn-outline btn-sm" data-act="close" data-id="${j.id}">Close</button>` : ''}
+              <button class="btn btn-danger btn-sm" data-act="delete" data-id="${j.id}">Delete</button>
+            </div>
+          </td>
+        </tr>`;
+      }))).join('');
+    }
+
+    document.getElementById('status-filter').addEventListener('click', e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      active = btn.dataset.s;
+      [...document.getElementById('status-filter').children].forEach(b=> b.classList.toggle('on', b===btn));
+      render();
+    });
+
+    document.getElementById('jobs-body').addEventListener('click', async e=>{
+      const btn = e.target.closest('button'); if(!btn) return;
+      const id = btn.dataset.id, act = btn.dataset.act;
+      try{
+        if(act==='pause'){ await GZ.db.jobs.update(id,{status:'paused'}); GZ.toast('Job paused.'); await render(); }
+        if(act==='activate'){ await GZ.db.jobs.update(id,{status:'active'}); GZ.toast('Job activated.','success'); await render(); }
+        if(act==='close'){ await GZ.db.jobs.update(id,{status:'closed'}); GZ.toast('Job closed.'); await render(); }
+        if(act==='delete'){ pendingDeleteId = id; GZ.openModal('delete-modal'); }
+      }catch(err){ GZ.toast(err.message||'Could not update job.','error'); }
+    });
+
+    document.getElementById('confirm-delete').addEventListener('click', async ()=>{
+      if(pendingDeleteId){
+        try{
+          await GZ.db.jobs.remove(pendingDeleteId);
+          pendingDeleteId=null;
+          GZ.closeModal('delete-modal');
+          GZ.toast('Job deleted.');
+          await render();
+        }catch(err){ GZ.toast(err.message||'Could not delete job.','error'); }
+      }
+    });
+
+    await render();
+  });
+</script>
+</body>
+</html>
